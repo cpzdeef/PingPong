@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <link
+            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+            rel="stylesheet"
+            integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
+            crossorigin="anonymous"
+    />
+    <title>List of users</title>
+</head>
+<body>
+<h1 class="text-center">List of users</h1>
+<div id="auth" class="mb-3 text-center"></div>
+<script src="/js/auth.js"></script>
+<div class="container">
+    <div class="mb-3 text-center">
+        <button class="btn btn-warning" onclick="window.history.back();">Go Back</button>
+    </div>
+    <div class="row">
+        <div class="col-md-6" id="user-list">
+            <!-- User list will be loaded here -->
+        </div>
+        <div class="col-md-6" id="user-details">
+            <!-- User details will be displayed here -->
+        </div>
+    </div>
+</div>
+
+<script>
+    function createList(users) {
+        let list = "<ul class='list-group'>";
+        users.forEach((user) => {
+            // Each user's name is a link with an onclick event handler to call the function loadUserDetails with the user's ID
+            list += `<li class='list-group-item'><a href="#" onclick="loadUserDetails(${user.id}, event)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-person-circle" viewBox="0 0 16 16">
+  <path d="M11 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/>
+  <path fill-rule="evenodd" d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8zm8-7a7 7 0 0 0-5.468 11.37C3.242 11.226 4.805 10 8 10s4.757 1.225 5.468 2.37A7 7 0 0 0 8 1z"/>
+</svg> ${user.name}</a> - ${user.email}</li>`;
+        });
+        list += "</ul>";
+        return list;
+    }
+
+    function loadUserDetails(userId, event) {
+        if (event) {
+            // Prevent default action of anchor tag
+            event.preventDefault();
+        }
+        // Fetch the user details
+        fetch(`/api/users/${userId}`)
+            .then((response) => response.json())
+            .then((user) => {
+                // Call a function to display the user details
+                displayUserDetails(user);
+            })
+            .catch((error) => console.error(error));
+    }
+
+    async function displayUserDetails(user) {
+        let userDetailsHTML = `
+        <h2>${user.name}</h2>
+        <p>Email: ${user.email}</p>
+        <p>Date of Birth: ${user.date_of_birth}</p>
+        <h3>Profile</h3>
+        <p>Keyboard Settings: ${user.profile.keyboardsettings || "Not set"}</p>
+        <p>Mouse: ${user.profile.mouse ? "Yes" : "No"}</p>
+        <p>Level: ${user.profile.level}</p>
+        <h3>Games</h3>
+        <select id="games-dropdown">
+            <option value="all">All Games</option>
+            <option value="singleplayer">Singleplayer Games</option>
+            <option value="oneversusone">One Versus One Games</option>
+            <option value="none">No Games</option>
+        </select>
+        <div id="games-list"></div>
+        <button id="toggle-friends-btn" class="btn btn-primary mt-3">Show/Hide who this user is following</button>
+        <div id="friends-list" class="mt-3" style="display: none;"></div>
+        `;
+
+        const userDetailsContainer = document.getElementById('user-details');
+        userDetailsContainer.innerHTML = userDetailsHTML;
+
+        // Check if the user is logged in and if the logged-in user is following the user whose details are being displayed
+        if (isLoggedIn() && (user.id !== JSON.parse(sessionStorage.getItem("token")).id)) {
+            // This should be replaced with the actual check to see if the user is followed
+            const isFollowing = checkIfUserIsFollowed(user.id); // Placeholder function
+
+            // Create the follow/unfollow button as a DOM element
+            const followUnfollowButton = document.createElement('button');
+            followUnfollowButton.className = isFollowing ? 'btn btn-danger' : 'btn btn-success';
+            followUnfollowButton.textContent = isFollowing ? 'Unfollow' : 'Follow';
+            // Attach an event listener directly
+            followUnfollowButton.addEventListener('click', function () {
+                toggleFollowUser(user.id, isFollowing);
+            });
+            // Append the follow/unfollow button to the container
+            const div = document.createElement("div");
+            div.classList.add("mb-3");
+            div.appendChild(followUnfollowButton);
+            userDetailsContainer.appendChild(div);
+        }
+
+        // fetch and display games:
+        const result = await fetch(`/api/users/${user.id}/games`).then((response) => response.json()).then((games) => {
+                const gamesListContainer = document.getElementById('games-list');
+                gamesListContainer.innerHTML = "";
+                displayAllGames(games);
+            }
+        );
+        // Event listener for the dropdown
+        document.getElementById('games-dropdown').addEventListener('change', async function (event) {
+            const result = await fetch(`/api/users/${user.id}/games`).then((response) => response.json()).then((games) => {
+                const selectedOption = event.target.value;
+                const gamesListContainer = document.getElementById('games-list');
+                gamesListContainer.innerHTML = "";
+
+                switch (selectedOption) {
+                    case 'all':
+                        displayAllGames(games);
+                        break;
+                    case 'singleplayer':
+                        displaySingleplayerGames(games.singleplayer);
+                        break;
+                    case 'oneversusone':
+                        displayOneVersusOneGames(games.oneVersusOne);
+                        break;
+                    case 'none':
+                        document.getElementById('games-list').innerHTML = '';
+                        break;
+                    default:
+                        console.error('Unknown game type selected');
+                }
+            });
+        });
+
+        // Event listener for the Show/Hide Friends button
+        document.getElementById('toggle-friends-btn').addEventListener('click', function () {
+            const friendsListContainer = document.getElementById('friends-list');
+            if (friendsListContainer.style.display === 'none') {
+                friendsListContainer.style.display = 'block';
+                displayFriends(user.id); // Call a function to fetch and display the friends
+            } else {
+                friendsListContainer.style.display = 'none';
+            }
+        });
+    }
+
+    function checkIfUserIsFollowed(userId) {
+        // Implement the logic to check if the current user is followed
+        // This could involve fetching from an API or checking a local state
+        let followingUsers = JSON.parse(sessionStorage.getItem("friends"));
+        let followed = false;
+        for (let user of followingUsers) {
+            if (user.id === userId) followed = true;
+        }
+        return followed; // Return true if followed, false otherwise
+    }
+
+    function toggleFollowUser(userId, isFollowing) {
+        const currentUserID = JSON.parse(sessionStorage.getItem("token")).id;
+        console.log("Toggle follow state clicked");
+
+        // Define the HTTP method based on whether the user is currently followed
+        const method = isFollowing ? "DELETE" : "PUT";
+
+        // API call to toggle the follow state of the user
+        fetch(`/api/users/${currentUserID}/friends`, {
+            method: method,
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({userId: userId}), // Assuming the API expects a JSON payload
+        })
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error("Network response was not ok");
+                }
+                return response.json();
+            })
+            .then(async (data) => {
+                console.log("data: " + data);
+                // Assuming the API returns the updated friend list or status
+                console.log(
+                    `You now ${isFollowing ? "unfollow" : "follow"} ${data.name}`
+                );
+                // Update the session storage if necessary
+                const resFriends = await getFriends(currentUserID);
+                const friendsStatus = resFriends.status;
+                resFriends.json().then((friends) => {
+                    if (friendsStatus === 200) {
+                        sessionStorage.setItem("friends", JSON.stringify(friends));
+                    }
+                });
+                // Reload the user details to update the follow button
+                loadUserDetails(userId, null);
+            })
+            .catch((error) => {
+                console.error(
+                    "There has been a problem with your fetch operation:",
+                    error
+                );
+            });
+    }
+
+    function displayAllGames(games) {
+        displaySingleplayerGames(games.singleplayer);
+        displayOneVersusOneGames(games.oneVersusOne);
+    }
+
+    function displaySingleplayerGames(games) {
+        const gamesListContainer = document.getElementById('games-list');
+        gamesListContainer.innerHTML = "";
+        let gamesListHTML = '<ul>';
+
+        games.forEach(game => {
+            console.log("game: " + game);
+            gamesListHTML += `<li>Game ID: ${game.id}, Date of Game: ${new Date(game.date_of_game).toLocaleString()}, Score: User ${game.scoreUser} - ${game.scoreBot} Bot</li>`;
+        });
+
+        gamesListHTML += '</ul>';
+
+        gamesListContainer.innerHTML += gamesListHTML; // Note the use of += to append to the list
+    }
+
+    function displayOneVersusOneGames(games) {
+        const gamesListContainer = document.getElementById('games-list');
+        let gamesListHTML = '<ul>';
+
+        games.forEach(game => {
+            console.log("game: " + game);
+            gamesListHTML += `<li>Game ID: ${game.id}, Date of Game: ${new Date(game.date_of_game).toLocaleString()}, Scores - User 1: ${game.scoreUser1}, User 2: ${game.scoreUser2}</li>`;
+        });
+
+        gamesListHTML += '</ul>';
+
+        gamesListContainer.innerHTML += gamesListHTML; // Note the use of += to append to the list
+    }
+
+    // Define the displayFriends function to fetch and display the friends
+    async function displayFriends(userId) {
+        try {
+            const response = await fetch(`/api/users/${userId}/friends`);
+            if (!response.ok) throw new Error('Network response was not ok');
+            const friends = await response.json();
+
+            const friendsListContainer = document.getElementById('friends-list');
+            friendsListContainer.innerHTML = createFriendsList(friends);
+        } catch (error) {
+            console.error('Error fetching friends:', error);
+            // Implement user-friendly error handling here
+        }
+    }
+
+    // Define the createFriendsList function to create HTML for the friends list
+    function createFriendsList(friends) {
+        return friends.map(friend => `
+        <div class="friend-item">
+            <p>${friend.name} - ${friend.email}</p>
+        </div>
+    `).join('');
+    }
+
+    function isLoggedIn() {
+        console.log(sessionStorage.getItem("token"));
+        return sessionStorage.getItem("token") !== null;
+    }
+
+    async function getFriends(id) {
+        return await fetch(`/api/users/${id}/friends`, {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+            },
+        });
+    }
+
+    // Fetch and create the user list
+    fetch("/api/users")
+        .then((response) => response.json())
+        .then((users) => {
+            const userList = createList(users);
+            document.getElementById("user-list").innerHTML = userList;
+        })
+        .catch((error) => console.error(error));
+</script>
+
+<script
+        src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"
+        integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r"
+        crossorigin="anonymous"
+></script>
+<script
+        src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.min.js"
+        integrity="sha384-BBtl+eGJRgqQAUMxJ7pMwbEyER4l1g+O15P+16Ep7Q9Q+zqX6gSbd85u4mG4QzX+"
+        crossorigin="anonymous"
+></script>
+</body>
+</html>
